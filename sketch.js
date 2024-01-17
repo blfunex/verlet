@@ -47,10 +47,116 @@ function setup() {
   particles[particles.length - 1].pinned = true;
 
   frameRate(60);
+
+  selected = null;
+  hovered = null;
+  frozen = new Set();
+  square = [];
+  index = 0;
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+}
+
+function mouseMoved() {
+  let closest = null;
+  let closestDistance = Infinity;
+  for (const particle of particles) {
+    const dx = mouseX - particle.position.x;
+    const dy = mouseY - particle.position.y;
+
+    const d = Math.hypot(dx, dy);
+
+    if (d < 10) {
+      hovered = particle;
+      return;
+    }
+
+    if (d < closestDistance) {
+      closest = particle;
+      closestDistance = d;
+    }
+  }
+
+  hovered = closest;
+}
+
+function mouseDragged() {
+  if (selected && (mouseButton === LEFT || mouseButton === CENTER)) {
+    selected.pinned = true;
+    selected.position.x = mouseX;
+    selected.position.y = mouseY;
+    selected.oldPosition.copy(selected.position);
+  }
+}
+
+function mouseReleased() {
+  if (mouseButton === LEFT && selected) {
+    selected.pinned = false;
+    selected = null;
+  }
+}
+
+function mousePressed() {
+  if (hovered && (mouseButton === LEFT || mouseButton === CENTER)) {
+    selected = hovered;
+    for (const particle of frozen) particle.pinned = false;
+    frozen.clear();
+    square.length = 0;
+    hovered = null;
+    index = 0;
+    return;
+  }
+
+  if (mouseButton === RIGHT) {
+    const particle = new Particle(mouseX, mouseY);
+
+    particle.hidden = false;
+    particle.pinned = true;
+
+    frozen.add(particle);
+    particles.push(particle);
+
+    selected = particle;
+    hovered = null;
+
+    if (square.size < 4) {
+      square.push(particle);
+
+      const current = square[index];
+      const previous = square[index - 1];
+
+      index++;
+
+      if (previous) {
+        const constraint = new DistanceConstraint(current, previous);
+
+        constraints.push(constraint);
+      }
+    }
+
+    if (square.size === 4) {
+      constraints.push(new DistanceConstraint(square[0], square[3]));
+
+      const a = new DistanceConstraint(square[0], square[2]);
+      const b = new DistanceConstraint(square[1], square[3]);
+
+      a.hidden = b.hidden = true;
+
+      constraints.push(a);
+      constraints.push(b);
+
+      index = 0;
+      selected = square[0];
+    }
+
+    if (frozen.size > 4) {
+      constraints.push(new DistanceConstraint(square[index++], particle));
+      if (index === square.length) index = 0;
+      selected = square[index];
+    }
+  }
 }
 
 function draw() {
@@ -84,6 +190,9 @@ function draw() {
     20,
     50
   );
+
+  fill(255);
+  text(JSON.stringify(square.length, null, 2), 20, 100);
 }
 
 class Vector {
@@ -124,6 +233,16 @@ class Particle {
   }
 
   draw() {
+    if (hovered === this || selected === this) {
+      const hue = selected === this ? 220 : 0;
+      const light = selected === this ? 100 : 50;
+      const alpha = selected === this ? 1 : 0.5;
+
+      stroke(`hsla(${hue}, 100%, ${light}%, ${alpha})`);
+      strokeWeight(10);
+      point(this.position.x, this.position.y);
+    }
+
     if (this.hidden && !this.pinned) return;
     stroke(this.pinned ? "red" : 255);
     strokeWeight(this.pinned ? 5 : 2);
